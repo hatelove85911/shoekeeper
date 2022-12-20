@@ -5,28 +5,25 @@ import axios from 'axios'
 import { Button, Space } from 'antd';
 import { Col, Divider, Row } from 'antd';
 
-
-
 let html5QrCode;
-let camera = localStorage.getItem('cameraId');
+let camera;
 
 const initializeCamera = async () => {
-    const devices = await Html5Qrcode.getCameras()
-    camera = devices.slice(-1)[0].id
-    localStorage.setItem('cameraId', camera)
+    camera = localStorage.getItem('cameraId');
+    if (!camera) {
+        const devices = await Html5Qrcode.getCameras()
+        camera = devices.slice(-1)[0].id
+        localStorage.setItem('cameraId', camera)
+    }
 }
 
+
 export default function ScanPage() {
-    console.log('initialize code run')
     const [code, setCode] = useState('')
-    const [codes, setCodes] = useState([])
-    const [message, setMessage] = useState([])
+    const [items, setItems] = useState([])
 
     const scan = async () => {
-        setMessage([...message, 'initial camera Id is:' + camera])
-        if (!camera) {
-            await initializeCamera()
-        }
+        await initializeCamera()
         if (!html5QrCode) {
             html5QrCode = new Html5Qrcode(/* element id */ "scanner");
         }
@@ -39,20 +36,17 @@ export default function ScanPage() {
             },
             async (decodedText) => {
                 html5QrCode.stop()
-                setMessage([...message, 'html5qrcode scan finished, stopped'])
-                setCodes([...codes, decodedText])
                 setCode(decodedText)
                 // do something when code is read
                 // decodedText = '196152795809'
-                const item = await getProductInfoByGtin(decodedText)
+                // const item = await getProductInfoByGtin(decodedText)
             },
             (errorMessage) => {
-                setMessage([...message, 'html5qrcode scan failed' + errorMessage])
+                // setMessage([...message, 'html5qrcode scan failed' + errorMessage])
                 // html5QrCode.stop()
                 // parse error, ignore it.
             })
             .catch((err) => {
-                setMessage([...message, 'html5qrcode start failed' + err.message])
                 html5QrCode.stop()
                 // Start failed, handle it.
             });
@@ -81,25 +75,18 @@ export default function ScanPage() {
 
         return item
     }
+
+
+    useEffect(() => {
+        scan()
+    }, [])
+
     return (<>
         <Row>
             <Col span={24}>
-                {
-                    codes.map((code1, i) => {
-                        return (<p>{i}:{code1}</p>)
-                    })
-                }
-                {
-                    message.map((msg, i) => {
-                        return (<p>{i}:{msg}</p>)
-                    })
-                }
-            </Col>
-        </Row>
-
-        <Row>
-            <Col span={24}>
-                <Button onClick={scan}>Scan</Button>
+                <Button onClick={scan}>
+                    扫描
+                </Button>
             </Col>
         </Row>
 
