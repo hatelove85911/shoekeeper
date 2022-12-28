@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/static/css/main.e6c13ad2.css",
-    "main.js": "/static/js/main.3cd91a75.js",
-    "index.html": "/index.html",
-    "main.e6c13ad2.css.map": "/static/css/main.e6c13ad2.css.map",
-    "main.3cd91a75.js.map": "/static/js/main.3cd91a75.js.map"
+    "main.css": "/shoekeeper/static/css/main.e6c13ad2.css",
+    "main.js": "/shoekeeper/static/js/main.2a15e7b7.js",
+    "index.html": "/shoekeeper/index.html",
+    "main.e6c13ad2.css.map": "/shoekeeper/static/css/main.e6c13ad2.css.map",
+    "main.2a15e7b7.js.map": "/shoekeeper/static/js/main.2a15e7b7.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.3cd91a75.js"
+    "static/js/main.2a15e7b7.js"
   ]
 }
