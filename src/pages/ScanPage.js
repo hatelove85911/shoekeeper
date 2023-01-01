@@ -1,9 +1,12 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from "html5-qrcode";
 import axios from 'axios'
-import { Button, Space } from 'antd';
-import { Col, Divider, Row } from 'antd';
+import { Button, message, Space } from 'antd';
+import { v4 as uuidv4 } from 'uuid';
+import { Link } from "react-router-dom";
+import ItemList from './ItemList.js'
+import {localDB} from '../db/db.js'
 
 let html5QrCode;
 let camera;
@@ -17,40 +20,177 @@ const initializeCamera = async () => {
     }
 }
 
+const padStart = (str, n, padString = '0') => {
+    const strObj = String(str);
+    return (
+      Array(strObj.length >= n ? 0 : n - strObj.length + 1).join(padString) +
+      strObj
+    );
+  }
 
 export default function ScanPage() {
-    const [code, setCode] = useState('')
     const [items, setItems] = useState([])
+    // const [items, setItems] = useState([{
+    //     "_id": uuidv4(),
+    //     "gtinCode": "00196152795809",
+    //     "styleColor": "315123-111",
+    //     "size": "44",
+    //     "fullPrice": 799,
+    //     "costPrice": 479,
+    //     "title": "Nike Air Force 1 classic white",
+    //     "status": "scan"
+    // }])
+    const [isScan, setIsScan] = useState(false)
+    const [messageApi, contextHolder] = message.useMessage();
+    const itemsRef = useRef();
+    itemsRef.current = items
+
+    const bulkAddInventory = async () => {
+        const scanItems = itemsRef.current.filter(item => item.status === 'scan').map(item => ({
+            ...item,
+            status: 'normal'
+        }))
+
+        if (scanItems.length === 0) {
+            messageApi.warning("没有可以入库的物品!")
+            return
+        }
+        try {
+            await localDB.bulkDocs(scanItems)
+            const remainingItems = itemsRef.current.filter(item => scanItems.every(({_id}) => item._id !== _id))
+            setItems(remainingItems)
+            messageApi.success(`${scanItems.length}件物品入库成功!`)
+        } catch (err) {
+            messageApi.error('批量入库失败!')
+        }
+    }
+    const addInventory = async (doc) => {
+        if (doc.status !== 'scan') {
+            messageApi.error('入库失败')
+            return
+        }
+        try {
+            await localDB.put({
+                ...doc,
+                status: 'normal'
+            })
+            const filteredItems = itemsRef.current.filter(item => item._id !== doc._id)
+            setItems(filteredItems)
+            messageApi.success("入库成功!")
+        } catch (err) {
+            messageApi.error("入库失败!", err.message)
+        }
+    }
+    const bulkBolt = async () => {
+        const boltItems = itemsRef.current.filter(item => item.status === 'normal').map(item => ({
+            ...item,
+            status: 'bolt'
+        }))
+
+        if (boltItems.length === 0) {
+            messageApi.warning("没有物品可以闪电发货!")
+            return
+        }
+        try {
+            await localDB.bulkDocs(boltItems)
+            const remainingItems = itemsRef.current.filter(item => boltItems.every(({_id}) => item._id !== _id))
+            setItems(remainingItems)
+            messageApi.success(`${boltItems.length}件物品闪电发货成功!`)
+        } catch (err) {
+            messageApi.error('批量闪电发货失败!')
+        }
+    }
+    const matchInventory = async () => {
+        const result = await localDB.allDocs({
+            include_docs: true
+        })
+        const inventoryItems = result.rows.map(row => row.doc)
+        const matchedItems = itemsRef.current.map((item) => {
+            const index = inventoryItems.findIndex(it => it.status === 'normal' && it.styleColor === item.styleColor && it.size === item.size)
+            if (index !== -1) {
+                const matchedItem = inventoryItems[index]
+                inventoryItems.splice(index, 1)
+                return matchedItem
+            }
+            return item
+        })
+        setItems(matchedItems)
+    }
+    const bulkClear = () => {
+        setItems([])
+        localStorage.removeItem('scanItems')
+    }
+    const deleteItem = async (doc) => {
+        if (doc.status !== 'scan') {
+            try {
+                await localDB.remove(doc)
+            } catch (err) {
+                messageApi.error("删除失败!", err.message)
+                return
+            }
+        }
+        const filteredItems = itemsRef.current.filter(item => item._id !== doc._id)
+        setItems(filteredItems)
+        messageApi.success("删除成功!")
+    }
+
+    useEffect(() => {
+        // try {
+        //     const itemsStr = localStorage.getItem('scanItems')
+        //     const items = JSON.parse(itemsStr) || []
+        //     setItems(items)
+        // } catch (error) {
+        // }
+    }, [])
 
     const scan = async () => {
-        await initializeCamera()
-        if (!html5QrCode) {
-            html5QrCode = new Html5Qrcode(/* element id */ "scanner");
-        }
-        html5QrCode.start(
-            camera,
-            {
-                fps: 10,    // Optional, frame per seconds for qr code scanning
-                qrbox: { width: 300, height: 200 },  // Optional, if you want bounded box UI
-                showTorchButtonIfSupported: true
-            },
-            async (decodedText) => {
-                html5QrCode.stop()
-                setCode(decodedText)
-                // do something when code is read
-                // decodedText = '196152795809'
-                // const item = await getProductInfoByGtin(decodedText)
-            },
-            (errorMessage) => {
-                // setMessage([...message, 'html5qrcode scan failed' + errorMessage])
-                // html5QrCode.stop()
-                // parse error, ignore it.
-            })
-            .catch((err) => {
-                html5QrCode.stop()
-                // Start failed, handle it.
-            });
+        const isToScan = !isScan
+        setIsScan(isToScan)
+        if (isToScan) {
+            await initializeCamera()
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode(/* element id */ "scanner");
+            }
+            html5QrCode.start(
+                camera,
+                {
+                    fps: 20,    // Optional, frame per seconds for qr code scanning
+                    qrbox: { width: 200, height: 100 },  // Optional, if you want bounded box UI
+                    showTorchButtonIfSupported: true
+                },
+                async (decodedText) => {
+                    setIsScan(false)
+                    html5QrCode.stop()
+                    const paddedBarCode = padStart(decodedText, 14)
+                    try {
+                        const item = await getProductInfoByGtin(paddedBarCode)
+                        const allItems = [...itemsRef.current , {
+                            ...item,
+                            status: 'scan',
+                            _id: uuidv4()
+                        }]
+                        localStorage.setItem('scanItems', JSON.stringify(allItems))
+                        setItems(allItems)
+                        messageApi.success('扫描成功!');
 
+                    } catch (err) {
+                        messageApi.error('扫描失败!', err.message);
+                    }
+                },
+                (errorMessage) => {
+                    // setMessage([...message, 'html5qrcode scan failed' + errorMessage])
+                    // html5QrCode.stop()
+                    // parse error, ignore it.
+                })
+                .catch((err) => {
+                    setIsScan(false)
+                    html5QrCode.stop()
+                    messageApi.error('条形码扫描启动失败!', err.message);
+                    // Start failed, handle it.
+                });
+        } else {
+            html5QrCode.stop()
+        }
     }
     const getProductInfoByGtin = async (gtinCode) => {
         const gtinCodeEncoded = encodeURIComponent(gtinCode)
@@ -77,29 +217,18 @@ export default function ScanPage() {
     }
 
 
-    useEffect(() => {
-        scan()
-    }, [])
-
     return (<>
-        <Row>
-            <Col span={24}>
-                <Button onClick={scan}>
-                    扫描
-                </Button>
-            </Col>
-        </Row>
-
-        <Row>
-            <Col span={24}>
-                <div id="scanner" style={{
-                    width: '100%',
-                    height: '800px'
-                }}
-                >
-                </div>
-            </Col>
-        </Row>
-
+        <Space size="small" style={{ display: 'flex' }}>
+            <Button onClick={scan}>
+                {isScan ? '退出扫描' : '扫描'}
+            </Button>
+            <Button>
+                <Link to="/shoekeeper/">返回</Link>
+            </Button>
+        </Space>
+        { isScan && <div id="scanner" />
+        }
+        {contextHolder}
+        <ItemList mode="scan" {...{items, bulkAddInventory, deleteItem, addInventory, bulkClear, matchInventory, bulkBolt}}/>
     </>);
 }
